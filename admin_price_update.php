@@ -6,6 +6,7 @@
 // The same file shows the form (GET) and handles the submit (POST).
 // =====================================================================
 require_once 'db.php';
+require_admin();  // admin only: anyone else is sent to admin_login.php (must stay above any HTML output)
 
 $messages = [];   // success lines, e.g. "Just Java: $2.00 -> $2.50"
 $errors   = [];   // problems to show in red
@@ -19,15 +20,18 @@ try {
         $selected = isset($_POST['select']) && is_array($_POST['select']) ? array_keys($_POST['select']) : [];
         $prices   = isset($_POST['price'])  && is_array($_POST['price'])  ? $_POST['price'] : [];
 
-        if (count($selected) === 0) {
+        if (!csrf_ok()) {
+            // The form token is missing or wrong: the request did not come from this page
+            $errors[] = 'Your session expired. Reload the page and try again.';
+        } elseif (count($selected) === 0) {
             $errors[] = 'Please tick at least one coffee blend to update.';
         } else {
             // Load the options that belong to the TICKED products only, so nothing else can be changed.
             // (A user cannot update a product they did not tick, even by editing the form.)
-            $in  = implode(',', array_fill(0, count($selected), '?'));
-            $st  = $pdo->prepare("SELECT o.option_id, o.option_label, o.price, p.name
-                                  FROM product_options o JOIN products p ON p.product_id = o.product_id
-                                  WHERE o.product_id IN ($in)");
+            $in = implode(',', array_fill(0, count($selected), '?'));
+            $st = $pdo->prepare("SELECT o.option_id, o.option_label, o.price, p.name
+                                 FROM product_options o JOIN products p ON p.product_id = o.product_id
+                                 WHERE o.product_id IN ($in)");
             $st->execute(array_map('intval', $selected));
             $valid = [];
             foreach ($st as $r) $valid[(int)$r['option_id']] = $r;
@@ -36,7 +40,7 @@ try {
             $updates = [];
             foreach ($valid as $oid => $r) {
                 $raw = isset($prices[$oid]) ? trim((string)$prices[$oid]) : '';
-                if ($raw === '') continue;                         // left blank = keep current price
+                if ($raw === '') continue;   // left blank = keep current price
                 if (!preg_match('/^\d{1,4}(\.\d{1,2})?$/', $raw) || (float)$raw <= 0) {
                     $errors[] = h($r['name'] . ' (' . $r['option_label'] . ')') . ': "' . h($raw) . '" is not a valid price.';
                     continue;
@@ -65,6 +69,7 @@ try {
 
     // ---- PART B: always read the prices from the database to display them ----
     $menu = get_menu();   // always read back from the DB, so the page shows the saved prices
+
 } catch (Throwable $e) {
     // Any database problem: undo partial changes and show a friendly message
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
@@ -75,66 +80,76 @@ try {
 // ---- PART C: draw the page (header, messages, form) ----
 page_header('Price Update');
 ?>
-		<style>
-			.admin_table {border-collapse: collapse; width: 100%;}
-			.admin_table td, .admin_table th {padding: 6px; text-align: left; vertical-align: top;}
-			.admin_table tr:nth-of-type(odd) {background-color: #CDAB61;}
-			.new_price {display: none; margin-top: 4px;}
-			.new_price.on {display: block;}
-			.new_price input {width: 70px;}
-			.ok  {color: #2a6a1f; font-weight: bold;}
-			.err {color: #a00000; font-weight: bold;}
-		</style>
-		<h1> Click to update product prices: </h1>
+<style>
+  .admin_table {border-collapse: collapse; width: 100%;}
+  .admin_table td, .admin_table th {padding: 6px; text-align: left; vertical-align: top;}
+  .admin_table tr:nth-of-type(odd) {background-color: #CDAB61;}
+  .new_price {display: none; margin-top: 4px;}
+  .new_price.on {display: block;}
+  .new_price input {width: 70px;}
+  .ok  {color: #2a6a1f; font-weight: bold;}
+  .err {color: #a00000; font-weight: bold;}
+</style>
+
+<h1> Click to update product prices: </h1>
+
+<?php /* Log out (needs the form token so other websites cannot log the admin out) */ ?>
+<form method="post" action="admin_login.php">
+  <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+  <button type="submit" name="logout" value="1">Log out</button>
+</form>
 
 <?php /* Green box listing what was changed (only after a successful update) */ ?>
 <?php if ($messages): ?>
-		<div class="ok">Prices updated successfully:
-			<ul><?php foreach ($messages as $m): ?><li><?= $m ?></li><?php endforeach; ?></ul>
-		</div>
+  <div class="ok">Prices updated successfully:
+    <ul><?php foreach ($messages as $m): ?><li><?= $m ?></li><?php endforeach; ?></ul>
+  </div>
 <?php endif; ?>
+
 <?php /* Red box listing any problems */ ?>
 <?php if ($errors): ?>
-		<div class="err"><ul><?php foreach ($errors as $e): ?><li><?= $e ?></li><?php endforeach; ?></ul></div>
+  <div class="err"><ul><?php foreach ($errors as $e): ?><li><?= $e ?></li><?php endforeach; ?></ul></div>
 <?php endif; ?>
 
-		<form method="post" action="admin_price_update.php">
-		<table class="admin_table">
-<?php /* One row per coffee: checkbox | name | description + CURRENT prices + (hidden) new-price boxes */ ?>
-<?php foreach ($menu as $p): $pid = $p['product_id']; ?>
-			<tr>
-				<td width="30"><input type="checkbox" name="select[<?= $pid ?>]" value="1" class="pick" data-target="np_<?= $pid ?>"></td>
-				<td width="120"><b><?= h($p['name']) ?></b></td>
-				<td>
-					<?= h($p['description']) ?><br>
-					<?php
-					$parts = [];
-					foreach ($p['options'] as $o) $parts[] = h($o['option_label']) . ' $' . number_format((float)$o['price'], 2);
-					echo implode(' &nbsp; ', $parts);
-					?>
-					<div class="new_price" id="np_<?= $pid ?>">
-						New price:
-						<?php foreach ($p['options'] as $o): ?>
-							<label><?= h($o['option_label']) ?> $
-							<input type="text" name="price[<?= $o['option_id'] ?>]" size="5" maxlength="7" disabled></label>&nbsp;
-						<?php endforeach; ?>
-					</div>
-				</td>
-			</tr>
-<?php endforeach; ?>
-		</table>
-		<p><button type="submit">Update Prices</button></p>
-		</form>
+<form method="post" action="admin_price_update.php">
+  <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+  <table class="admin_table">
+    <?php /* One row per coffee: checkbox | name | description + CURRENT prices + (hidden) new-price boxes */ ?>
+    <?php foreach ($menu as $p): $pid = $p['product_id']; ?>
+      <tr>
+        <td width="30"><input type="checkbox" name="select[<?= $pid ?>]" value="1" class="pick" data-target="np_<?= $pid ?>"></td>
+        <td width="120"><b><?= h($p['name']) ?></b></td>
+        <td>
+          <?= h($p['description']) ?><br>
+          <?php
+            $parts = [];
+            foreach ($p['options'] as $o) $parts[] = h($o['option_label']) . ' $' . number_format((float)$o['price'], 2);
+            echo implode(' &nbsp; ', $parts);
+          ?>
+          <div class="new_price" id="np_<?= $pid ?>">
+            New price:
+            <?php foreach ($p['options'] as $o): ?>
+              <label><?= h($o['option_label']) ?> $
+                <input type="text" name="price[<?= $o['option_id'] ?>]" size="5" maxlength="7" disabled></label>&nbsp;
+            <?php endforeach; ?>
+          </div>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+  </table>
+  <p><button type="submit">Update Prices</button></p>
+</form>
 
-		<?php /* Small script: ticking a checkbox reveals that coffee's price boxes */ ?>
-		<script>
-			// Show (and enable) the price inputs only for ticked blends; disabled inputs are not submitted.
-			document.querySelectorAll('.pick').forEach(function (cb) {
-				cb.addEventListener('change', function () {
-					var box = document.getElementById(cb.dataset.target);
-					box.classList.toggle('on', cb.checked);
-					box.querySelectorAll('input').forEach(function (i) { i.disabled = !cb.checked; });
-				});
-			});
-		</script>
+<?php /* Small script: ticking a checkbox reveals that coffee's price boxes */ ?>
+<script>
+// Show (and enable) the price inputs only for ticked blends; disabled inputs are not submitted.
+document.querySelectorAll('.pick').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    var box = document.getElementById(cb.dataset.target);
+    box.classList.toggle('on', cb.checked);
+    box.querySelectorAll('input').forEach(function (i) { i.disabled = !cb.checked; });
+  });
+});
+</script>
+
 <?php page_footer(); ?>

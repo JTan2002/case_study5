@@ -10,6 +10,13 @@ DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS product_options;
 DROP TABLE IF EXISTS products;
 
+CREATE TABLE users (
+  user_id       INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(40)  NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role          ENUM('user','admin') NOT NULL DEFAULT 'user'
+) ENGINE=InnoDB;
+
 -- One row per coffee blend
 CREATE TABLE products (
     product_id   INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

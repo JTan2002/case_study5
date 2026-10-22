@@ -54,8 +54,7 @@ try {
 			<a href="menu.php">Menu</a>
 			<a href="music.html">Music</a>
 			<a href="jobs.html">Jobs</a>
-			<a href="admin_price_update.php">Price Update</a>
-			<a href="admin_sales_report.php">Sales Report</a>
+			<a href="login.php">Login</a>
 		</nav>
 	</div>
 	<div id="rightcolumn">

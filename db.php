@@ -6,6 +6,8 @@
 // Other files load it with:  require_once 'db.php';
 // =====================================================================
 
+if (session_status() === PHP_SESSION_NONE) session_start();
+
 // ---- Database login details: change these to match your MySQL / XAMPP / WAMP setup ----
 const DB_HOST = 'localhost';   // where MySQL runs
 const DB_NAME = 'javajam';     // database created by schema.sql
@@ -33,6 +35,24 @@ function h($s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
+function is_admin(): bool {
+    return ($_SESSION['role'] ?? '') === 'admin';
+}
+
+// Call at the very top of any admin-only page (before any output).
+function require_admin(): void {
+    if (!isset($_SESSION['user_id'])) {          // not logged in -> go to login
+        header('Location: login.php?next=' . urlencode(basename($_SERVER['SCRIPT_NAME'])));
+        exit;
+    }
+    if (!is_admin()) {                           // logged in but not admin -> blocked
+        http_response_code(403);
+        page_header('Access Denied');
+        echo '<h1>Access denied</h1><p>Only administrators can view this page.</p>';
+        page_footer();
+        exit;
+    }
+}
 // Reads every product and its options (Single/Double/...) from the database.
 // Result shape:
 //   [ product_id => ['product_id'=>..,'name'=>..,'description'=>..,'options'=>[ {option rows} ]] ]
@@ -84,9 +104,16 @@ function page_header(string $title): void { ?>
 			<a href="index.html">Home</a>
 			<a href="menu.php">Menu</a>
 			<a href="music.html">Music</a>
-			<a href="jobs.html">Jobs</a>
-			<a href="admin_price_update.php">Price Update</a>
-			<a href="admin_sales_report.php">Sales Report</a>
+			<<a href="jobs.html">Jobs</a>
+            <?php if (is_admin()): ?>
+                <a href="admin_price_update.php">Price Update</a>
+               <a href="admin_sales_report.php">Sales Report</a>
+            <?php endif; ?>
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <a href="logout.php">Logout (<?= h($_SESSION['username']) ?>)</a>
+            <?php else: ?>
+                <a href="login.php">Login</a>
+            <?php endif; ?>
 		</nav>
 	</div>
 	<div id="rightcolumn">

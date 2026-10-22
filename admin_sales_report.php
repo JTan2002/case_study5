@@ -5,10 +5,12 @@
 // which parts you want: sales by product, sales by category, popular option of best seller.
 // =====================================================================
 require_once 'db.php';
+require_once 'auth.php';
+require_admin();   // admin only: anyone else is sent to admin_login.php (must stay above any HTML output)
 
 // ---- Step 1: read the chosen date (default today); reject anything that is not a real date ----
 $date = $_GET['date'] ?? date('Y-m-d');
-$dt   = DateTime::createFromFormat('Y-m-d', $date);
+$dt = DateTime::createFromFormat('Y-m-d', $date);
 if (!$dt || $dt->format('Y-m-d') !== $date) { $date = date('Y-m-d'); $dt = new DateTime($date); }
 
 // ---- Step 2: which button/boxes were used? ----
@@ -23,7 +25,7 @@ $end   = (clone $dt)->modify('+1 day')->format('Y-m-d 00:00:00');
 
 $errors = [];
 $byProduct = $byCategory = [];
-$popular = null;
+$popular = [];   // list of ['product' => name, 'options' => [option names]] (more than one option when quantities tie)
 
 // Must tick at least one report option
 if ($submitted && !($wantProd || $wantCat || $wantPop)) {
@@ -34,7 +36,6 @@ if ($submitted && !($wantProd || $wantCat || $wantPop)) {
 if ($submitted && !$errors) {
     try {
         $pdo = get_db();
-
         // One query gives dollars + quantity for every product/option on the chosen day.
         // LEFT JOIN keeps products with no sales (shown as 0).
         $sql = 'SELECT p.product_id, p.name, o.option_name,
@@ -52,7 +53,7 @@ if ($submitted && !$errors) {
         $rows = $st->fetchAll();
 
         // Add the rows up two ways: per product, and per category (Null/Single/Double)
-        $byProduct = [];                                   // name => [dollars, qty, options => [name => [qty,dollars]]]
+        $byProduct  = [];   // name => [dollars, qty, options => [name => [qty,dollars]]]
         $byCategory = ['Null' => [0.0, 0], 'Single' => [0.0, 0], 'Double' => [0.0, 0]];
         foreach ($rows as $r) {
             $n = $r['name'];
@@ -64,25 +65,25 @@ if ($submitted && !$errors) {
             $byCategory[$r['option_name']][1] += (int)$r['qty'];
         }
 
-        // Best selling product(s) = highest dollar sales. Compared in whole cents so float rounding can't break a tie.
-$bestCents = -1;
-foreach ($byProduct as $d) {
-    if ($d['qty'] > 0) $bestCents = max($bestCents, (int)round($d['dollars'] * 100));
-}
-
-// For each best seller, keep ALL options that share the highest quantity
-$popular = [];
-if ($bestCents >= 0) {
-    foreach ($byProduct as $n => $d) {
-        if ($d['qty'] <= 0 || (int)round($d['dollars'] * 100) !== $bestCents) continue;
-        $topQty = max(array_column($d['options'], 'qty'));
-        $opts = [];
-        foreach ($d['options'] as $on => $od) {
-            if ($od['qty'] === $topQty) $opts[] = $on;
+        // Best selling product(s) = highest dollar sales.
+        // Compared in whole cents so float rounding can't break a tie.
+        $bestCents = -1;
+        foreach ($byProduct as $d) {
+            if ($d['qty'] > 0) $bestCents = max($bestCents, (int)round($d['dollars'] * 100));
         }
-        $popular[] = ['product' => $n, 'options' => $opts];
-    }
-}
+
+        // For each best seller, keep ALL options that share the highest quantity (ties are shown, not hidden)
+        if ($bestCents >= 0) {
+            foreach ($byProduct as $n => $d) {
+                if ($d['qty'] <= 0 || (int)round($d['dollars'] * 100) !== $bestCents) continue;
+                $topQty = max(array_column($d['options'], 'qty'));
+                $opts = [];
+                foreach ($d['options'] as $on => $od) {
+                    if ($od['qty'] === $topQty) $opts[] = $on;
+                }
+                $popular[] = ['product' => $n, 'options' => $opts];
+            }
+        }
     } catch (Throwable $e) {
         $errors[] = 'Database error. Please check the connection settings in db.php.';
     }
@@ -94,75 +95,85 @@ function money($v): string { return '$' . number_format((float)$v, 2); }
 // ---- Step 4: draw the page ----
 page_header('Daily Sales Report');
 ?>
-		<style>
-			.rpt {border-collapse: collapse; margin: 10px 0 20px 0; min-width: 400px;}
-			.rpt th, .rpt td {border: 1px solid #7a6330; padding: 5px 10px; text-align: left;}
-			.rpt th {background-color: #CDAB61;}
-			.err {color: #a00000; font-weight: bold;}
-			.detail {font-size: 90%; margin: -10px 0 15px 0;}
-		</style>
-		<h1> Click to generate daily sales report: </h1>
+<style>
+  .rpt {border-collapse: collapse; margin: 10px 0 20px 0; min-width: 400px;}
+  .rpt th, .rpt td {border: 1px solid #7a6330; padding: 5px 10px; text-align: left;}
+  .rpt th {background-color: #CDAB61;}
+  .err {color: #a00000; font-weight: bold;}
+  .detail {font-size: 90%; margin: -10px 0 15px 0;}
+</style>
+
+<h1> Click to generate daily sales report: </h1>
+
+<?php /* Log out (needs the form token so other websites cannot log the admin out) */ ?>
+<form method="post" action="admin_login.php">
+  <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+  <button type="submit" name="logout" value="1">Log out</button>
+</form>
 
 <?php /* Form: date + 3 checkboxes (all ticked by default on first visit). Uses GET so the report URL can be bookmarked */ ?>
-		<form method="get" action="admin_sales_report.php">
-			<p>Date: <input type="date" name="date" value="<?= h($date) ?>"></p>
-			<p><label><input type="checkbox" name="by_product"  <?= (!$submitted || $wantProd) ? 'checked' : '' ?>> Total dollar and quantity sales by products</label></p>
-			<p><label><input type="checkbox" name="by_category" <?= (!$submitted || $wantCat)  ? 'checked' : '' ?>> Total dollar and quantity sales by categories</label></p>
-			<p><label><input type="checkbox" name="popular"     <?= (!$submitted || $wantPop)  ? 'checked' : '' ?>> Popular option of best selling product</label></p>
-			<p><button type="submit" name="generate" value="1">Generate Report</button></p>
-		</form>
+<form method="get" action="admin_sales_report.php">
+  <p>Date: <input type="date" name="date" value="<?= h($date) ?>"></p>
+  <p><label><input type="checkbox" name="by_product"  <?= (!$submitted || $wantProd) ? 'checked' : '' ?>> Total dollar and quantity sales by products</label></p>
+  <p><label><input type="checkbox" name="by_category" <?= (!$submitted || $wantCat)  ? 'checked' : '' ?>> Total dollar and quantity sales by categories</label></p>
+  <p><label><input type="checkbox" name="popular"     <?= (!$submitted || $wantPop)  ? 'checked' : '' ?>> Popular option of best selling product</label></p>
+  <p><button type="submit" name="generate" value="1">Generate Report</button></p>
+</form>
 
 <?php if ($errors): ?>
-		<div class="err"><ul><?php foreach ($errors as $e): ?><li><?= $e ?></li><?php endforeach; ?></ul></div>
+  <div class="err"><ul><?php foreach ($errors as $e): ?><li><?= $e ?></li><?php endforeach; ?></ul></div>
 <?php endif; ?>
 
 <?php /* Report output - only shown after a valid submit */ ?>
 <?php if ($submitted && !$errors): ?>
-		<h2> Report for <?= h($dt->format('d M Y')) ?> </h2>
 
-<?php /* Table 1: total dollars and quantity per product */ ?>
-<?php if ($wantProd): ?>
-		<h3> Sales by product </h3>
-		<table class="rpt">
-			<tr><th>Product</th><th>Total Dollar Sales</th><th>Quantity Sales</th></tr>
-<?php foreach ($byProduct as $n => $d): ?>
-			<tr><td><?= h($n) ?></td><td><?= money($d['dollars']) ?></td><td><?= $d['qty'] ?></td></tr>
-<?php endforeach; ?>
-		</table>
+  <h2> Report for <?= h($dt->format('d M Y')) ?> </h2>
+
+  <?php /* Table 1: total dollars and quantity per product */ ?>
+  <?php if ($wantProd): ?>
+    <h3> Sales by product </h3>
+    <table class="rpt">
+      <tr><th>Product</th><th>Total Dollar Sales</th><th>Quantity Sales</th></tr>
+      <?php foreach ($byProduct as $n => $d): ?>
+        <tr><td><?= h($n) ?></td><td><?= money($d['dollars']) ?></td><td><?= $d['qty'] ?></td></tr>
+      <?php endforeach; ?>
+    </table>
+  <?php endif; ?>
+
+  <?php /* Table 2: totals per category, plus a breakdown line for each coffee with options */ ?>
+  <?php if ($wantCat): ?>
+    <h3> Sales by categories </h3>
+    <table class="rpt">
+      <tr><th>Category</th><th>Total Dollar Sales</th><th>Quantity Sales</th></tr>
+      <?php foreach ($byCategory as $c => [$dollars, $qty]): ?>
+        <tr><td><?= h($c) ?></td><td><?= money($dollars) ?></td><td><?= $qty ?></td></tr>
+      <?php endforeach; ?>
+    </table>
+    <div class="detail">
+      <?php foreach ($byProduct as $n => $d): if (count($d['options']) < 2) continue; ?>
+        <?= h($n) ?> &ndash;
+        <?php
+          $bits = [];
+          foreach ($d['options'] as $on => $od) $bits[] = $od['qty'] . ' ' . h($on) . ' (' . money($od['dollars']) . ')';
+          echo implode(', ', $bits);
+        ?><br>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php /* Result 3: option(s) with highest quantity, of the product with highest dollar sales */ ?>
+  <?php if ($wantPop): ?>
+    <h3> Popular option of best selling product </h3>
+    <?php if ($popular): ?>
+      <?php foreach ($popular as $p): ?>
+        <p>Popular (highest quantity sold) option<?= count($p['options']) > 1 ? 's' : '' ?> of the best selling (highest $) product:
+        <b><?= h(implode(', ', $p['options'])) ?></b> of <b><?= h($p['product']) ?></b><?= count($p['options']) > 1 ? ' (tied on quantity)' : '' ?>.</p>
+      <?php endforeach; ?>
+    <?php else: ?>
+      <p>No sales recorded on this date.</p>
+    <?php endif; ?>
+  <?php endif; ?>
+
 <?php endif; ?>
 
-<?php /* Table 2: totals per category, plus a breakdown line for each coffee with options */ ?>
-<?php if ($wantCat): ?>
-		<h3> Sales by categories </h3>
-		<table class="rpt">
-			<tr><th>Category</th><th>Total Dollar Sales</th><th>Quantity Sales</th></tr>
-<?php foreach ($byCategory as $c => [$dollars, $qty]): ?>
-			<tr><td><?= h($c) ?></td><td><?= money($dollars) ?></td><td><?= $qty ?></td></tr>
-<?php endforeach; ?>
-		</table>
-		<div class="detail">
-<?php foreach ($byProduct as $n => $d): if (count($d['options']) < 2) continue; ?>
-			<?= h($n) ?> &ndash;
-			<?php
-			$bits = [];
-			foreach ($d['options'] as $on => $od) $bits[] = $od['qty'] . ' ' . h($on) . ' (' . money($od['dollars']) . ')';
-			echo implode(', ', $bits);
-			?><br>
-<?php endforeach; ?>
-		</div>
-<?php endif; ?>
-
-<?php /* Result 3: option with highest quantity, of the product with highest dollar sales */ ?>
-<?php if ($wantPop): ?>
-		<h3> Popular option of best selling product </h3>
-<?php if ($popular): ?>
-<?php foreach ($popular as $p): ?>
-<p>Popular (highest quantity sold) option<?= count($p['options']) > 1 ? 's' : '' ?> of the best selling (highest $) product:
-<b><?= h(implode(', ', $p['options'])) ?></b> of <b><?= h($p['product']) ?></b><?= count($p['options']) > 1 ? ' (tied on quantity)' : '' ?>.</p>
-<?php endforeach; ?>
-<?php else: ?>
-		<p>No sales recorded on this date.</p>
-<?php endif; ?>
-<?php endif; ?>
-<?php endif; ?>
 <?php page_footer(); ?>
