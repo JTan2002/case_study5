@@ -64,18 +64,25 @@ if ($submitted && !$errors) {
             $byCategory[$r['option_name']][1] += (int)$r['qty'];
         }
 
-        // Best selling product = highest dollar sales; its popular option = highest quantity sold
-        $best = null;
-        foreach ($byProduct as $n => $d) {
-            if ($d['qty'] > 0 && ($best === null || $d['dollars'] > $byProduct[$best]['dollars'])) $best = $n;
+        // Best selling product(s) = highest dollar sales. Compared in whole cents so float rounding can't break a tie.
+$bestCents = -1;
+foreach ($byProduct as $d) {
+    if ($d['qty'] > 0) $bestCents = max($bestCents, (int)round($d['dollars'] * 100));
+}
+
+// For each best seller, keep ALL options that share the highest quantity
+$popular = [];
+if ($bestCents >= 0) {
+    foreach ($byProduct as $n => $d) {
+        if ($d['qty'] <= 0 || (int)round($d['dollars'] * 100) !== $bestCents) continue;
+        $topQty = max(array_column($d['options'], 'qty'));
+        $opts = [];
+        foreach ($d['options'] as $on => $od) {
+            if ($od['qty'] === $topQty) $opts[] = $on;
         }
-        if ($best !== null) {
-            $bestOpt = null; $bestQty = -1;
-            foreach ($byProduct[$best]['options'] as $on => $d) {
-                if ($d['qty'] > $bestQty) { $bestQty = $d['qty']; $bestOpt = $on; }
-            }
-            $popular = ['product' => $best, 'option' => $bestOpt];
-        }
+        $popular[] = ['product' => $n, 'options' => $opts];
+    }
+}
     } catch (Throwable $e) {
         $errors[] = 'Database error. Please check the connection settings in db.php.';
     }
@@ -149,8 +156,10 @@ page_header('Daily Sales Report');
 <?php if ($wantPop): ?>
 		<h3> Popular option of best selling product </h3>
 <?php if ($popular): ?>
-		<p>Popular (highest quantity sold) option of the best selling (highest $) product is
-			<b><?= h($popular['option']) ?></b> of <b><?= h($popular['product']) ?></b>.</p>
+<?php foreach ($popular as $p): ?>
+<p>Popular (highest quantity sold) option<?= count($p['options']) > 1 ? 's' : '' ?> of the best selling (highest $) product:
+<b><?= h(implode(', ', $p['options'])) ?></b> of <b><?= h($p['product']) ?></b><?= count($p['options']) > 1 ? ' (tied on quantity)' : '' ?>.</p>
+<?php endforeach; ?>
 <?php else: ?>
 		<p>No sales recorded on this date.</p>
 <?php endif; ?>
