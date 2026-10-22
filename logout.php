@@ -1,6 +1,11 @@
 <?php
-require_once 'db.php';
+// logout.php - ends the admin session and returns to the home page.
+require_once 'auth.php';
 $_SESSION = [];
+if (ini_get('session.use_cookies')) {
+    $p = session_get_cookie_params();
+    setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+}
 session_destroy();
-header('Location: menu.php');
+header('Location: index.html');
 exit;

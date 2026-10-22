@@ -2,11 +2,11 @@
 // =====================================================================
 // db.php - shared by every PHP page.
 // Holds: (1) the database connection, (2) small helper functions,
-//        (3) the page header/footer so admin pages match the site design.
-// Other files load it with:  require_once 'db.php';
+// (3) the page header/footer so admin pages match the site design.
+// Other files load it with: require_once 'db.php';
 // =====================================================================
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/auth.php';   // starts the session + admin login helpers
 
 // ---- Database login details: change these to match your MySQL / XAMPP / WAMP setup ----
 const DB_HOST = 'localhost';   // where MySQL runs
@@ -22,9 +22,9 @@ function get_db(): PDO {
         // DSN = text that tells PDO which database server/name to use
         $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
         $pdo = new PDO($dsn, DB_USER, DB_PASS, [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // throw errors so try/catch can handle them
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // rows come back as ['column' => value]
-            PDO::ATTR_EMULATE_PREPARES   => false,                  // use real prepared statements (safer)
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,   // throw errors so try/catch can handle them
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,         // rows come back as ['column' => value]
+            PDO::ATTR_EMULATE_PREPARES   => false,                    // use real prepared statements (safer)
         ]);
     }
     return $pdo;
@@ -35,24 +35,6 @@ function h($s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
-function is_admin(): bool {
-    return ($_SESSION['role'] ?? '') === 'admin';
-}
-
-// Call at the very top of any admin-only page (before any output).
-function require_admin(): void {
-    if (!isset($_SESSION['user_id'])) {          // not logged in -> go to login
-        header('Location: login.php?next=' . urlencode(basename($_SERVER['SCRIPT_NAME'])));
-        exit;
-    }
-    if (!is_admin()) {                           // logged in but not admin -> blocked
-        http_response_code(403);
-        page_header('Access Denied');
-        echo '<h1>Access denied</h1><p>Only administrators can view this page.</p>';
-        page_footer();
-        exit;
-    }
-}
 // Reads every product and its options (Single/Double/...) from the database.
 // Result shape:
 //   [ product_id => ['product_id'=>..,'name'=>..,'description'=>..,'options'=>[ {option rows} ]] ]
@@ -87,45 +69,31 @@ function get_menu(): array {
 }
 
 // Prints the top of a page (logo, left navigation, opening of the right column).
-// Used by the two admin pages so they look like the other pages.
+// Used by the admin pages and login page so they look like the other pages.
 function page_header(string $title): void { ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title> JavaJam - <?= h($title) ?> </title>
-	<meta charset="utf-8">
-	<link rel="stylesheet" href="site.css">
+<title> JavaJam - <?= h($title) ?> </title>
+<meta charset="utf-8">
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
 <div id="wrapper">
-	<header></header>
-	<div id="leftcolumn">
-		<nav>
-			<a href="index.html">Home</a>
-			<a href="menu.php">Menu</a>
-			<a href="music.html">Music</a>
-			<<a href="jobs.html">Jobs</a>
-            <?php if (is_admin()): ?>
-                <a href="admin_price_update.php">Price Update</a>
-               <a href="admin_sales_report.php">Sales Report</a>
-            <?php endif; ?>
-            <?php if (isset($_SESSION['user_id'])): ?>
-                <a href="logout.php">Logout (<?= h($_SESSION['username']) ?>)</a>
-            <?php else: ?>
-                <a href="login.php">Login</a>
-            <?php endif; ?>
-		</nav>
-	</div>
-	<div id="rightcolumn">
+<header></header>
+<div id="leftcolumn">
+<?php include __DIR__ . '/nav.php'; ?>
+</div>
+<div id="rightcolumn">
 <?php }
 
 // Prints the bottom of a page (footer + closing tags).
 function page_footer(): void { ?>
-	</div>
-	<footer>
-	<p> Copyright &copy; 2014 JavaJam Coffee House<br>
-	<a href="mailto:stevenloekita@harsono.com">stevenloekita@harsono.com </a></p>
-	</footer>
+</div>
+<footer>
+<p> Copyright &copy; 2014 JavaJam Coffee House<br>
+<a href="mailto:stevenloekita@harsono.com">stevenloekita@harsono.com </a></p>
+</footer>
 </div>
 </body>
 </html>

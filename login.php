@@ -1,34 +1,70 @@
 <?php
-require_once 'db.php';
+// =====================================================================
+// login.php - admin login form. On success the admin is sent to the page
+// they were trying to open (Price Update or Sales Report).
+// =====================================================================
+require_once 'db.php';   // also loads auth.php (starts the session)
 
-$error = '';
+// Already logged in? Go straight to the admin area.
+if (is_admin()) {
+    header('Location: admin_price_update.php');
+    exit;
+}
+
+// Only these pages may be used as the "go back to" target (prevents open redirects).
+$allowed = ['admin_price_update.php', 'admin_sales_report.php'];
+$next = $_POST['next'] ?? $_GET['next'] ?? 'admin_price_update.php';
+if (!in_array($next, $allowed, true)) $next = 'admin_price_update.php';
+
+// CSRF token: proves the form was submitted from this site.
+if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
+
+$error = null;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $st = get_db()->prepare('SELECT user_id, username, password_hash, role FROM users WHERE username = ?');
-    $st->execute([trim($_POST['username'] ?? '')]);
-    $u = $st->fetch();
+    $user = trim($_POST['username'] ?? '');
+    $pass = $_POST['password'] ?? '';
 
-    if ($u && password_verify($_POST['password'] ?? '', $u['password_hash'])) {
-        session_regenerate_id(true);             // prevents session fixation
-        $_SESSION['user_id']  = (int)$u['user_id'];
-        $_SESSION['username'] = $u['username'];
-        $_SESSION['role']     = $u['role'];
+    if (!hash_equals($_SESSION['csrf'], $_POST['csrf'] ?? '')) {
+        $error = 'Session expired. Please try again.';
+    } else {
+        try {
+            $st = get_db()->prepare('SELECT admin_id, password_hash FROM admins WHERE username = ?');
+            $st->execute([$user]);
+            $row = $st->fetch();
 
-        // Only allow redirecting to the two admin pages (no open redirect)
-        $allowed = ['admin_price_update.php', 'admin_sales_report.php'];
-        $next = $_GET['next'] ?? '';
-        header('Location: ' . (in_array($next, $allowed, true) ? $next : 'menu.php'));
-        exit;
+            if ($row && password_verify($pass, $row['password_hash'])) {
+                session_regenerate_id(true);            // new session id after login
+                $_SESSION['admin_id'] = (int)$row['admin_id'];
+                header('Location: ' . $next);
+                exit;
+            }
+            $error = 'Invalid username or password.';
+        } catch (Throwable $e) {
+            $error = 'Login is unavailable. Run setup_admin.php once and check db.php.';
+        }
     }
-    $error = 'Invalid username or password.';
 }
 
 page_header('Login');
 ?>
-<h1>Login</h1>
-<?php if ($error): ?><p style="color:#a00000;font-weight:bold"><?= h($error) ?></p><?php endif; ?>
-<form method="post">
-  <p><label>Username: <input type="text" name="username" required></label></p>
-  <p><label>Password: <input type="password" name="password" required></label></p>
-  <p><button type="submit">Log in</button></p>
+<style>
+.login_table td {padding: 6px; text-align: left;}
+.err {color: #a00000; font-weight: bold;}
+</style>
+
+<h1> Admin Login </h1>
+
+<?php if ($error): ?><p class="err"><?= h($error) ?></p><?php endif; ?>
+
+<form method="post" action="login.php">
+<input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+<input type="hidden" name="next" value="<?= h($next) ?>">
+<table class="login_table">
+<tr><td>Username:</td><td><input type="text" name="username" required autofocus></td></tr>
+<tr><td>Password:</td><td><input type="password" name="password" required></td></tr>
+</table>
+<button type="submit">Log In</button>
 </form>
+
 <?php page_footer(); ?>
