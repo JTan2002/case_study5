@@ -1,0 +1,67 @@
+
+
+#wrapper {	background-color: #FFFFCE;
+			width: 80%;
+			margin: auto;
+			min-width: 850px;
+		}
+
+#leftcolumn {	background-color: #FFFFCE;
+				float: left;
+				width: 150px;
+				padding: 30px 0px 20px 0px;
+			}
+			
+#rightcolumn {	
+				background-color: #F1E8AF;
+				margin-left: 150px;
+				margin-top: 0px;
+				padding: 0.1px 20px 20px 20px;			
+			}
+
+#Job_RC_text {
+				position: relative;
+				left: 0px;
+				width: 90px;
+				right: 0px;
+				padding-right: 0px;
+				margin-right: 0px;
+				text-align: right;
+			}
+
+#Job_RC_box {
+				position: relative;
+				top: 10px;
+				left: 100px;
+				float: left;
+			}
+			
+#forestpic	{ 	left: 10px;
+				margin: 5px 30px 20px 20px;
+				float: left;
+			}
+
+#musicpic	{	left: 10px;
+				margin: 5px 25px 5px 25px;
+				float: left;
+				height: 100px;
+				width: 100px;
+			}
+			
+header {	height: 120px;
+			background-image: url(javalogo.gif);
+			background-repeat: no-repeat;
+			background-color: #CDAB61;
+			background-position: center;
+		}
+		
+footer {	font-size:70%;
+			text-align: center;
+			padding-bottom:5px;
+			padding-top:5px;
+			background-color: #CDAB61;
+		}
+		
+nav a {	margin: 30px;
+		color: #CDAB61;
+		text-decoration: none;}

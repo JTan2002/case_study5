@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title> JavaJam - Jobs </title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="site.css">
+	<script type="text/javascript" src="jobs_validator.js"></script>
+	<style></style>
+	
+</head>
+<body>
+
+<div id="wrapper">
+	<header>
+	</header>
+	<div id="leftcolumn">
+		<nav>
+			<a href="index.html">Home</a>
+			<a href="menu.php">Menu</a>
+			<a href="music.html">Music</a>
+			<a href="jobs.html">Jobs</a>
+			<a href="admin_price_update.php">Price Update</a>
+			<a href="admin_sales_report.php">Sales Report</a>
+		</nav>
+	</div>
+	<div id="rightcolumn">
+		<h1> Jobs at JavaJam </h1>
+		<p> Wants to work at JavaJam? Fill out the form below to start your applicaton.
+			Required fields are marked with an asterisk * </p>
+		
+		<form action="show_get.php" method="get" id="JobsForm">
+
+		
+			<table>
+				<tr>
+					<td>*name:</td>
+					<td><input type="text" name="CustName"  id="CustName" required></td>
+				</tr>
+				<tr>
+					<td>*Email:</td>
+					<td><input type="email" name="CustEmail"  id="CustEmail" required ></td>
+				</tr>
+				<tr>
+					<td>Start Date:</td>
+					<td><input type="date" name="StartDate"  id="StartDate" required></td>
+				</tr>
+				<tr>
+					<td>*Experience:</td>
+					<td><textarea type="textarea" name="Experience" id="Experience" rows="2" cols="22" required ></textarea></td>
+				</tr>
+			</table>
+		<input type="submit" value="Apply Now">
+		</form>
+		<script type="text/javascript">
+			//var x = new Date();
+			//document.write(x.getMonth()+"/"+x.getDay()+"/"+x.getFullYear() +"   "+x.getHours());
+			document.getElementById("JobsForm").onsubmit = validateForm;
+			/*
+			document.getElementById("CustName").onblur = validateName;
+			document.getElementById("CustEmail").onblur = validateEmail;
+			document.getElementById("StartDate").onblur = validateStartdate;
+			document.getElementById("Experience").onblur = validateExperience;   
+			*/
+			
+		</script>
+		
+	</div>
+	<footer>
+	<p> Copyright &copy; 2014 JavaJam Coffee House<br>
+	<a href="mailto:stevenloekita@harsono.com">stevenloekita@harsono.com </a></p>
+	</footer>
+	
+	
+</div>	
+
+</body>
+</html>
